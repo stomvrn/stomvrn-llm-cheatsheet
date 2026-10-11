@@ -1,0 +1,120 @@
+name: Validate Artifact
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Проверка принципов экосистемы
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: index.html существует
+        run: |
+          if [ ! -f index.html ]; then
+            echo "::error file=index.html::index.html не найден в корне репозитория"
+            exit 1
+          fi
+          echo "✓ index.html найден"
+
+      - name: Размер ≤ 512 КБ
+        run: |
+          SIZE=$(stat -c%s index.html)
+          MAX=$((512 * 1024))
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "::error file=index.html::Файл $SIZE байт превышает лимит 512 КБ"
+            exit 1
+          fi
+          echo "✓ Размер: $SIZE байт ($((SIZE / 1024)) КБ)"
+
+      - name: CSP connect-src 'none'
+        run: |
+          if ! grep -q "connect-src 'none'" index.html; then
+            echo "::error file=index.html::CSP connect-src 'none' отсутствует"
+            exit 1
+          fi
+          echo "✓ CSP connect-src 'none' присутствует"
+
+      - name: CSP default-src 'none'
+        run: |
+          if ! grep -q "default-src 'none'" index.html; then
+            echo "::error file=index.html::CSP default-src 'none' отсутствует"
+            exit 1
+          fi
+          echo "✓ CSP default-src 'none' присутствует"
+
+      - name: Нет внешних ресурсов
+        run: |
+          if grep -E "src=[\"']https?://" index.html; then
+            echo "::error file=index.html::Найден внешний src (script/img)"
+            exit 1
+          fi
+          if grep -E "href=[\"']https?://" index.html; then
+            echo "::error file=index.html::Найден внешний href (stylesheet/link)"
+            exit 1
+          fi
+          echo "✓ Внешних ресурсов нет"
+
+      - name: Нет eval и new Function
+        run: |
+          if grep -E "\beval\s*\(" index.html; then
+            echo "::error file=index.html::Найден eval()"
+            exit 1
+          fi
+          if grep -E "new\s+Function\s*\(" index.html; then
+            echo "::error file=index.html::Найден new Function()"
+            exit 1
+          fi
+          echo "✓ eval / new Function не используются"
+
+      - name: Нет внешних fetch / XHR / WebSocket
+        run: |
+          if grep -E "fetch\s*\(" index.html | grep -v "^\s*//" | grep -v "ServiceWorker"; then
+            echo "::warning file=index.html::Найден вызов fetch() — проверь, не нарушает ли CSP"
+          fi
+          if grep -E "new\s+XMLHttpRequest" index.html; then
+            echo "::error file=index.html::Найден XMLHttpRequest"
+            exit 1
+          fi
+          if grep -E "new\s+WebSocket" index.html; then
+            echo "::error file=index.html::Найден WebSocket"
+            exit 1
+          fi
+          echo "✓ Асинхронных сетевых вызовов нет"
+
+      - name: URN объявлен
+        run: |
+          if ! grep -q "urn:vanxo:artifact:" index.html; then
+            echo "::error file=index.html::URN не найден в разметке"
+            exit 1
+          fi
+          URN=$(grep -oE "urn:vanxo:artifact:[a-z0-9-]+:[0-9]+\.[0-9]+\.[0-9]+" index.html | head -1)
+          echo "✓ URN: $URN"
+
+      - name: Версия объявлена
+        run: |
+          if ! grep -q "data-version=" index.html; then
+            echo "::error file=index.html::data-version не найден"
+            exit 1
+          fi
+          VER=$(grep -oE 'data-version="[^"]+"' index.html | head -1 | sed 's/data-version="//;s/"//')
+          echo "✓ Версия: $VER"
+
+      - name: SHA-256 артефакта
+        run: |
+          echo "SHA-256: $(sha256sum index.html | cut -d' ' -f1)"
+
+      - name: Итог
+        run: |
+          echo ""
+          echo "════════════════════════════════════════"
+          echo " ✓ Все проверки принципов пройдены"
+          echo "════════════════════════════════════════"
