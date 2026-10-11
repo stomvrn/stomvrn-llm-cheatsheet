@@ -2,7 +2,7 @@
 
 > Какую нейросеть выбрать. 24 плитки. Работает офлайн.
 
-**[Открыть →](https://stomvrn.github.io/llm-cheatsheet/)**
+**[Открыть →](https://stomvrn.github.io/stomvrn-llm-cheatsheet/)**
 
 ## Что это
 
